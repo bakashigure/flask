@@ -1,0 +1,150 @@
+﻿import os
+from datetime import datetime
+from flask import url_for, render_template, redirect, \
+    jsonify, request, current_app, flash, session
+from werkzeug.utils import secure_filename
+from flask_login import logout_user, login_user, current_user, login_required
+from . import main
+from .. import db
+from ..models import WebSetting, User, Info, Activity, SecondPageName, \
+    Post, CommunityPost, CommunityComment
+from ..decorators import user_required
+
+
+ALLOWED_EXTENSIONS = set(['png', 'jpg', 'jpeg', 'gif'])
+@main.route('/')
+@user_required
+def index():
+    setting = WebSetting.query.first()
+    return render_template("index.html", setting=setting)
+
+def allowed_file(filename):
+    """checking"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS
+
+@main.route('/upload', methods=["POST", "GET"])
+def upload():
+    """upload"""
+    file_urls = []
+    if request.method == 'POST':
+        files = request.files.getlist("File")
+        for file in files:
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file_url = os.path.join(current_app.config['UPLOAD_FOLDER'],
+                                        filename)
+                file.save(file_url)
+                file_url = url_for('static', filename='image/' + filename)
+                file_urls.append(file_url)
+    json_data = {
+        'errno': 0,
+        'data': file_urls,
+        'status': 'true'
+    }
+    return jsonify(json_data)
+
+@main.route('/activity')
+@user_required
+def show_activity():
+    """show_activity"""
+    condition = request.args.get('condition')
+    if condition is None:
+        condition = 'all'
+    now = datetime.now()
+    page = request.args.get('page', 1, type=int)
+    if condition == 'start':
+        pagination = Activity.query \
+            .filter(Activity.start_date < now, Activity.end_date > now) \
+            .order_by(Activity.timestamp.desc()) \
+            .paginate(page, per_page=current_app.config['POSTS_PER_PAGE'],
+                      error_out=True)
+    elif condition == 'end':
+        pagination = Activity.query \
+            .filter(Activity.end_date < now) \
+            .order_by(Activity.timestamp.desc()) \
+            .paginate(page, per_page=current_app.config['POSTS_PER_PAGE'],
+                      error_out=True)
+    elif condition == 'future':
+        pagination = Activity.query \
+            .filter(Activity.start_date > now) \
+            .order_by(Activity.timestamp.desc()) \
+            .paginate(page, per_page=current_app.config['POSTS_PER_PAGE'],
+                      error_out=True)
+    else:
+        pagination = Activity.query.order_by(
+            Activity.timestamp.desc()).paginate(
+            page, per_page=current_app.config['POSTS_PER_PAGE'],
+            error_out=True)
+    activities = pagination.items
+    prev_page = None
+    if pagination.has_prev:
+        prev_page = page - 1
+    next_page = None
+    if pagination.has_next:
+        next_page = page + 1
+    count = len(activities)
+    return render_template('activity.html', activities=activities,
+                           pagination=pagination, next_page=next_page,
+                           prev_page=prev_page, count=count)
+
+
+@main.route('/activity/<int:id>')
+@user_required
+def activity(id):
+    """activitys"""
+    ac = Activity.query.get_or_404(id)
+    return render_template('show-activity.html', ac=ac)
+
+
+@main.route('/posts/<int:id>')
+@user_required
+def show_posts(id):
+    """posts"""
+    name = SecondPageName.query.filter_by(id=id).first().page_name
+    return render_template('posts.html', id=id, name=name)
+
+
+@main.route('/post/<int:id>')
+@user_required
+def show_post(id):
+    """post"""
+    post = Post.query.get_or_404(id)
+    author = WebSetting.query.first().corporate_name
+    count = len([comment for comment in post.comments])
+    return render_template('post.html', post=post, author=author,
+                           comments=post.comments, count=count)
+
+
+@main.route('/community')
+@user_required
+def community():
+    """community"""
+    page = request.args.get('page', 1, type=int)
+    pagination = CommunityPost.query.order_by(CommunityPost.top.desc(),
+        CommunityPost.last_comment_time.desc()).paginate(
+        page, per_page=current_app.config['POSTS_PER_PAGE'],
+        error_out=False)
+    posts = pagination.items
+    return render_template('community.html', posts=posts, pagination=pagination)
+
+
+@main.route('/community-post/<int:id>')
+@user_required
+def show_community_post(id):
+    """community-post"""
+    post = CommunityPost.query.get_or_404(id)
+    if post.page_view is None:
+        post.page_view = 0
+    post.page_view += 1
+    db.session.add(post)
+    return render_template('c_post.html', post=post, comments=post.comments)
+
+
+@main.route('/community/<int:id>')
+@login_required
+@user_required
+def edit_community_post(id):
+    """community"""
+    post = CommunityPost.query.get_or_404(id)
+    return render_template('edit_c_post.html', post=post)
