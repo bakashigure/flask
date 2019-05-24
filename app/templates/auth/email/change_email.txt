@@ -1,0 +1,12 @@
+﻿    更改登录邮箱：
+    {{ user.username }},
+    本邮件是重新设定您的登录邮箱所用！
+
+    点击下面的连接即可更改邮箱：<a
+        href="{{ url_for('auth.change_email', token=token, _external=True) }}">
+    {{ url_for('auth.change_email', token=token, _external=True) }}
+    </a>
+
+    感谢您的访问，祝您使用愉快！
+	From
+	flask项目组
