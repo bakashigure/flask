@@ -6,7 +6,7 @@ from flask import send_from_directory, url_for
 from flask_script import Manager, Shell
 from flask_migrate import Migrate, MigrateCommand
 
-from app.models import Administrator, WebSetting, \
+#from app.models import Administrator, WebSetting, \
     SecondPageName, Post, Activity, User
 
 app = create_app('production')
